@@ -4,7 +4,7 @@
   <img src="docs/images/ds2-scholar-banner.jpg" alt="Dark Souls II: Scholar of the First Sin" width="480">
 </p>
 
-[Русский](README.md) · [Download the port](https://github.com/KostinKD/ds2scholar-nx/releases/download/v1.10.0-access1/ds2scholar-nx-1.10.0-access1-home.zip) · [Maximum FPS](#maximum-fps)
+[Русский](README.md) · [Download the port](https://github.com/KostinKD/ds2scholar-nx/releases/download/v1.10.0-access1/ds2scholar-nx-1.10.0-access1-home.zip) · [YouTube video](https://youtu.be/Z7behKeTOnI) · [Maximum FPS](#maximum-fps)
 
 Unofficial port of **Xbox 360 SotFS** for Switch. This guide installs the
 **prebuilt player package: you do not need to compile an NRO or install PGO to play**.
