@@ -1,0 +1,40 @@
+#version 450
+// ds2scholar-nx (ds2_7e3_r11g11b10): the 7e3 side as r11f_g11f_b10f in the *_r11 variants.
+#ifndef SRC_FMT
+#define SRC_FMT rgba16f
+#endif
+#ifndef DST_FMT
+#define DST_FMT rgba16f
+#endif
+// ds2-nx (ds2_resolve_7e3_direct, 2026-10-17): a resolve of a 2_10_10_10 (UNORM10) EDRAM view whose tiles hold the 7e3
+// scene, straight from the 7e3 view. Dark Souls II binds its HDR scene (7e3) as UNORM10 only to copy the raw 7e3 bits
+// into a texture (the tone map decodes them, exp_adjust +3); mode 4 converted the whole scene into a UNORM10 view
+// first (twice a frame), then copied. Here each channel is encoded to its 7e3 bits (as sa2_edram_16f_to_16f.comp's
+// Pack32 for format 3) and stored as UNORM10 (bits / 1023): the same texels as the conversion + copy.
+// Same layout and push constants as me_resolve_exp_bias.comp (exponent_bias unused).
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0, SRC_FMT) uniform readonly image2D source_image;
+layout(set = 0, binding = 1, rgb10_a2) uniform writeonly image2D destination_image;
+layout(push_constant) uniform Resolve {
+    ivec2 source_offset;
+    ivec2 destination_offset;
+    uvec2 extent;
+    int exponent_bias;
+} resolve;
+
+uint A7e3(float value) {
+    uint f32 = floatBitsToUint(clamp(value, 0.0, 31.875));
+    uint denormal = ((f32 & 0x7FFFFFu) | 0x800000u) >> min(125u - (f32 >> 23u), 24u);
+    uint normal = f32 - (124u << 23u);
+    uint biased = f32 < 0x3E800000u ? denormal : normal;
+    return ((biased + 0x7FFFu + ((biased >> 16u) & 1u)) >> 16u) & 0x3FFu;
+}
+
+void main() {
+    uvec2 pixel = gl_GlobalInvocationID.xy;
+    if (any(greaterThanEqual(pixel, resolve.extent))) return;
+    vec4 v = imageLoad(source_image, resolve.source_offset + ivec2(pixel));
+    vec4 unorm = vec4(float(A7e3(v.r)), float(A7e3(v.g)), float(A7e3(v.b)), round(clamp(v.a, 0.0, 1.0) * 3.0)) /
+                 vec4(1023.0, 1023.0, 1023.0, 3.0);
+    imageStore(destination_image, resolve.destination_offset + ivec2(pixel), unorm);
+}

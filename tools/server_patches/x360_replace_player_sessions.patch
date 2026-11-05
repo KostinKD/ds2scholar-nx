@@ -1,0 +1,179 @@
+--- a/Source/Server/Config/RuntimeConfig.cpp
++++ b/Source/Server/Config/RuntimeConfig.cpp
+@@ -291,6 +291,7 @@
+     SERIALIZE_VAR(AuthServerPort);
+     SERIALIZE_VAR(GameServerPort);
+     SERIALIZE_VAR(X360Mode);
++    SERIALIZE_VAR(X360ReplacePlayerSessions);
+     SERIALIZE_VAR(X360CloseHandshakeFix);
+     SERIALIZE_VAR(X360SocialDiagnostics);
+     SERIALIZE_VAR(X360GhostResponseField2);
+--- a/Source/Server/Config/RuntimeConfig.h
++++ b/Source/Server/Config/RuntimeConfig.h
+@@ -209,6 +209,10 @@
+     // Steam is not used. See X360.md.
+     bool X360Mode = false;
+ 
++    // x360: a successful repeat login retires older connections for the same
++    // player before routing pushes or accepting new multiplayer requests.
++    bool X360ReplacePlayerSessions = false;
++
+     // Experimental SotFS close handshake: a FIN+ACK is still a FIN and needs our own FIN in response.
+     bool X360CloseHandshakeFix = false;
+ 
+--- a/Source/Server/Server/GameService/GameClient.cpp
++++ b/Source/Server/Server/GameService/GameClient.cpp
+@@ -40,6 +40,11 @@
+ 
+ bool GameClient::Poll()
+ {
++    if (SessionSuperseded)
++    {
++        return true;
++    }
++
+     // If we've got a delayed disconnect pending, check if we should disconnect them now.
+     if (DisconnectTime > 0.0 && GetSeconds() > DisconnectTime)
+     {
+--- a/Source/Server/Server/GameService/GameClient.h
++++ b/Source/Server/Server/GameService/GameClient.h
+@@ -62,6 +62,10 @@
+ 
+     bool Banned = false;
+ 
++    // A confirmed replacement login retires this connection immediately.
++    bool SessionSuperseded = false;
++    bool LostPlayerNotified = false;
++
+ protected:
+ 
+     bool HandleMessage(const Frpg2ReliableUdpMessage& Message);
+--- a/Source/Server/Server/GameService/GameService.cpp
++++ b/Source/Server/Server/GameService/GameService.cpp
+@@ -129,9 +129,13 @@
+ 
+             // Let all managers know this client is being disconnected, they
+             // may need to clean things up.
+-            for (auto& Manager : Managers)
++            if (!Client->LostPlayerNotified)
+             {
+-                Manager->OnLostPlayer(Client.get());
++                Client->LostPlayerNotified = true;
++                for (auto& Manager : Managers)
++                {
++                    Manager->OnLostPlayer(Client.get());
++                }
+             }
+ 
+             iter = Clients.erase(iter);
+@@ -248,11 +252,59 @@
+     AuthStateIter->second.LastRefreshTime = GetSeconds();
+ }
+ 
++void GameService::SupersedePlayerSessions(GameClient* Replacement)
++{
++    const RuntimeConfig& Config = ServerInstance->GetConfig();
++    const PlayerState& State = Replacement->GetPlayerState();
++    if (!Config.X360Mode || !Config.X360ReplacePlayerSessions ||
++        State.GetPlayerId() == 0 || State.GetSteamId().empty())
++    {
++        return;
++    }
++
++    // Called from a login handler during Clients iteration: do not erase here.
++    for (const auto& Client : Clients)
++    {
++        if (Client.get() == Replacement || Client->SessionSuperseded ||
++            Client->GetPlayerState().GetPlayerId() != State.GetPlayerId() ||
++            Client->GetPlayerState().GetSteamId() != State.GetSteamId())
++        {
++            continue;
++        }
++
++        Client->SessionSuperseded = true;
++        LogS(Client->GetName().c_str(), "[reconnect] Superseding old session for player %u; old age %.3fs, replacement age %.3fs.",
++            State.GetPlayerId(), Client->GetConnectionDuration(), Replacement->GetConnectionDuration());
++        Client->MessageStream->Disconnect();
++
++        // Clean up before the replacement can submit new signs or invasions.
++        // The ordinary Poll removal must not notify managers a second time.
++        Client->LostPlayerNotified = true;
++        for (const auto& Manager : Managers)
++        {
++            Manager->OnLostPlayer(Client.get());
++        }
++    }
++}
++
++std::vector<std::shared_ptr<GameClient>> GameService::GetClients()
++{
++    std::vector<std::shared_ptr<GameClient>> Result;
++    for (const auto& Client : Clients)
++    {
++        if (!Client->SessionSuperseded)
++        {
++            Result.push_back(Client);
++        }
++    }
++    return Result;
++}
++
+ std::shared_ptr<GameClient> GameService::FindClientByPlayerId(uint32_t PlayerId)
+ {
+     for (std::shared_ptr<GameClient>& Client : Clients)
+     {
+-        if (Client->GetPlayerState().GetPlayerId() == PlayerId)
++        if (!Client->SessionSuperseded && Client->GetPlayerState().GetPlayerId() == PlayerId)
+         {
+             return Client;
+         }
+@@ -264,7 +316,7 @@
+ {
+     for (std::shared_ptr<GameClient>& Client : Clients)
+     {
+-        if (Client->GetPlayerState().GetSteamId() == SteamId)
++        if (!Client->SessionSuperseded && Client->GetPlayerState().GetSteamId() == SteamId)
+         {
+             return Client;
+         }
+@@ -278,7 +330,7 @@
+ 
+     for (std::shared_ptr<GameClient>& Client : Clients)
+     {
+-        if (Predicate(Client))
++        if (!Client->SessionSuperseded && Predicate(Client))
+         {
+             Result.push_back(Client);
+         }
+--- a/Source/Server/Server/GameService/GameService.h
++++ b/Source/Server/Server/GameService/GameService.h
+@@ -75,6 +75,8 @@
+         return nullptr;
+     }
+ 
++    void SupersedePlayerSessions(GameClient* Replacement);
++
+     std::shared_ptr<GameClient> FindClientByPlayerId(uint32_t PlayerId);
+ 
+     // Be very careful using this, we manipulate steam-ids in debug to allow multiple 
+@@ -82,7 +84,7 @@
+     std::shared_ptr<GameClient> FindClientBySteamId(const std::string& SteamId);
+     
+     std::vector<std::shared_ptr<GameClient>> FindClients(std::function<bool(const std::shared_ptr<GameClient>&)> Predicate);
+-    std::vector<std::shared_ptr<GameClient>> GetClients() { return Clients; }
++    std::vector<std::shared_ptr<GameClient>> GetClients();
+ 
+ protected:
+ 
+--- a/Source/Server.DarkSouls2/Server/GameService/GameManagers/Boot/DS2_BootManager.cpp
++++ b/Source/Server.DarkSouls2/Server/GameService/GameManagers/Boot/DS2_BootManager.cpp
+@@ -92,6 +92,9 @@
+         WarningS(Client->GetName().c_str(), "Disconnecting client as failed to send RequestWaitForUserLoginResponse response.");
+         return MessageHandleResult::Error;
+     }
++
++    // Only a successful login response can replace a prior authenticated session.
++    ServerInstance->GetService<GameService>()->SupersedePlayerSessions(Client);
+ 
+     // Configure what data we want the client to upload in thier status messages.
+     static std::vector<uint32_t> PlayerStatusFieldMask = {         

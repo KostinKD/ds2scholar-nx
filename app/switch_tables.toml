@@ -1,0 +1,30 @@
+# Jump tables the generator gets wrong, fixed by hand (each with its evidence). A file of its own, included by
+# ds2_manifest.toml: a [functions] line appended after a [[switch_tables]] entry would belong to that entry, and the
+# fixpoint tools append to overrides.toml.
+#
+# 2026-10-21, logs/switch_check.log (codegen run 8): two half-word tables in sub_825EFDF0 got 1024 generated cases with
+# wrong targets (REX_MAX_JUMP_TABLE_ENTRIES = 1024): the index is r3 - 0x1FD1B (addis r11,r3,-2; addi r11,r11,741 /
+# 628), so the generator did not see the bound cmplwi cr6,r11,12 / 23. Labels written by tools/switch_check.py --toml
+# and recomputed by hand from the tables (target = base + 4 * half-word): 0x82025E18 x13 from base 0x825F0AEC
+# (lis/addi at 0x825F0AD4/0x825F0ADC), 0x82025DE8 x24 from base 0x825F14B0 (0x825F1498/0x825F14A0); the default case
+# (b 0x82601D08 at 0x825F0AC0 / 0x825F1484) is the same address the table uses for its gaps.
+
+
+# sub_825EFDF0: half table at 0x82025E18, 13 cases (bound at 0x825F0AB8); generated 1024 cases, wrong targets (tools/switch_check.py)
+[[switch_tables]]
+address = 0x825F0AE8
+register = 11
+labels = [
+    0x825F0AEC, 0x825F0B78, 0x825F0BB4, 0x825F0D70, 0x825F0E80, 0x825F0F74, 0x82601D08, 0x82601D08,
+    0x82601D08, 0x82601D08, 0x825F0FDC, 0x825F105C, 0x825F108C,
+]
+
+# sub_825EFDF0: half table at 0x82025DE8, 24 cases (bound at 0x825F147C); generated 1024 cases, wrong targets (tools/switch_check.py)
+[[switch_tables]]
+address = 0x825F14AC
+register = 11
+labels = [
+    0x825F174C, 0x825F1764, 0x825F176C, 0x825F1774, 0x825F174C, 0x82601D08, 0x82601D08, 0x825F17A4,
+    0x825F17BC, 0x825F17D4, 0x825F18AC, 0x825F1984, 0x82601D08, 0x82601D08, 0x82601D08, 0x82601D08,
+    0x82601D08, 0x825F14B0, 0x825F1ACC, 0x825F1AE4, 0x825F1AFC, 0x825F1B14, 0x82602770, 0x82602770,
+]

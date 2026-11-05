@@ -1,0 +1,4 @@
+Monocypher 4.0.2 (https://monocypher.org, github.com/LoupVaillant/Monocypher tag 4.0.2, tarball SHA-256
+bc1ca30b1b2654e4e7daf2492c0d204200e55137f23fda6b7142fd7d523bd6b4): src/monocypher.{c,h} and
+src/optional/monocypher-ed25519.{c,h}, unmodified. Ed25519 signatures of the console key for online access
+(ds2scholar-nx docs/online-access.md). Licence: CC0 or BSD-2 (LICENCE.md).

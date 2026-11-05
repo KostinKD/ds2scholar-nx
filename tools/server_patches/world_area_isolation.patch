@@ -1,0 +1,87 @@
+diff --git a/Source/Server.DarkSouls2/Server/GameService/GameManagers/BloodMessage/DS2_BloodMessageManager.cpp b/Source/Server.DarkSouls2/Server/GameService/GameManagers/BloodMessage/DS2_BloodMessageManager.cpp
+index 7aefb1a9..13cbb074 100644
+--- a/Source/Server.DarkSouls2/Server/GameService/GameManagers/BloodMessage/DS2_BloodMessageManager.cpp
++++ b/Source/Server.DarkSouls2/Server/GameService/GameManagers/BloodMessage/DS2_BloodMessageManager.cpp
+@@ -303,8 +303,8 @@ MessageHandleResult DS2_BloodMessageManager::Handle_RequestGetBloodMessageList(G
+             uint32_t MaxForCell = Area.max_type_1() + Area.max_type_2(); // TODO: we need to figure out the difference between these two types.
+             int GatherCount = std::min((int)MaxForCell, (int)RemainingMessageCount);
+ 
+-            std::vector<std::shared_ptr<BloodMessage>> AreaMessages = LiveCache.GetRandomSet(GatherCount, [CellId](DS2_CellAndAreaId Id) {
+-                return Id.CellId == CellId;
++            std::vector<std::shared_ptr<BloodMessage>> AreaMessages = LiveCache.GetRandomSet(GatherCount, [CellId, Request](DS2_CellAndAreaId Id) {
++                return Id.CellId == CellId && Id.AreaId == (DS2_OnlineAreaId)Request->online_area_id();
+             });
+             for (std::shared_ptr<BloodMessage>& AreaMsg : AreaMessages)
+             {
+diff --git a/Source/Server.DarkSouls2/Server/GameService/GameManagers/Bloodstain/DS2_BloodstainManager.cpp b/Source/Server.DarkSouls2/Server/GameService/GameManagers/Bloodstain/DS2_BloodstainManager.cpp
+index 0ce7e0b6..978bab86 100644
+--- a/Source/Server.DarkSouls2/Server/GameService/GameManagers/Bloodstain/DS2_BloodstainManager.cpp
++++ b/Source/Server.DarkSouls2/Server/GameService/GameManagers/Bloodstain/DS2_BloodstainManager.cpp
+@@ -184,8 +184,8 @@ MessageHandleResult DS2_BloodstainManager::Handle_RequestGetBloodstainList(GameC
+             int MaxForCell = (int)Area.max_items();
+             int GatherCount = std::min(MaxForCell, RemainingStainCount);
+             
+-            std::vector<std::shared_ptr<Bloodstain>> AreaStains = LiveCache.GetRandomSet(GatherCount, [CellId](DS2_CellAndAreaId Id) {
+-                return Id.CellId == CellId;
++            std::vector<std::shared_ptr<Bloodstain>> AreaStains = LiveCache.GetRandomSet(GatherCount, [CellId, Request](DS2_CellAndAreaId Id) {
++                return Id.CellId == CellId && Id.AreaId == (DS2_OnlineAreaId)Request->online_area_id();
+             });
+             for (std::shared_ptr<Bloodstain>& AreaMsg : AreaStains)
+             {
+diff --git a/Source/Server.DarkSouls2/Server/GameService/GameManagers/Ghosts/DS2_GhostManager.cpp b/Source/Server.DarkSouls2/Server/GameService/GameManagers/Ghosts/DS2_GhostManager.cpp
+index 3d1dc6ed..7f8b4ac1 100644
+--- a/Source/Server.DarkSouls2/Server/GameService/GameManagers/Ghosts/DS2_GhostManager.cpp
++++ b/Source/Server.DarkSouls2/Server/GameService/GameManagers/Ghosts/DS2_GhostManager.cpp
+@@ -79,7 +79,7 @@ bool DS2_GhostManager::Init()
+         std::vector<std::shared_ptr<Ghost>> Ghosts = Database.FindRecentGhosts((uint32_t)AreaId, PrimeCountPerArea);
+         for (const std::shared_ptr<Ghost>& Ghost : Ghosts)
+         {
+-            LiveCache.Add(Ghost->CellId, Ghost->GhostId, Ghost);
++            LiveCache.Add({ Ghost->CellId, AreaId }, Ghost->GhostId, Ghost);
+             GhostCount++;
+         }
+     }
+@@ -162,7 +162,7 @@ MessageHandleResult DS2_GhostManager::Handle_RequestCreateGhostData(GameClient*
+ 
+     if (ActiveGhost)
+     {
+-        LiveCache.Add(ActiveGhost->CellId, ActiveGhost->GhostId, ActiveGhost);
++        LiveCache.Add({ ActiveGhost->CellId, (DS2_OnlineAreaId)ActiveGhost->OnlineAreaId }, ActiveGhost->GhostId, ActiveGhost);
+         if (Config.X360Mode && Config.X360SocialDiagnostics)
+         {
+             LogS(Client->GetName().c_str(), "[social] CreateGhostData player=%u account=%s char=%i area=%u cell=%llu bytes=%zu id=%u memory_only=%i",
+@@ -226,7 +226,7 @@ MessageHandleResult DS2_GhostManager::Handle_RequestGetGhostDataList(GameClient*
+             uint32_t MaxForCell = Area.max_items();
+             uint32_t GatherCount = std::min(MaxForCell, RemainingGhostCount);
+ 
+-            std::vector<std::shared_ptr<Ghost>> ActiveGhosts = LiveCache.GetRandomSet(CellId, GatherCount);
++            std::vector<std::shared_ptr<Ghost>> ActiveGhosts = LiveCache.GetRandomSet({ CellId, (DS2_OnlineAreaId)Request->online_area_id() }, GatherCount);
+             for (std::shared_ptr<Ghost>& AreaMsg : ActiveGhosts)
+             {
+                 DS2_Frpg2RequestMessage::GhostData& Data = *Response.mutable_ghosts()->Add();
+diff --git a/Source/Server.DarkSouls2/Server/GameService/GameManagers/Ghosts/DS2_GhostManager.h b/Source/Server.DarkSouls2/Server/GameService/GameManagers/Ghosts/DS2_GhostManager.h
+index ff62df7b..3a50c692 100644
+--- a/Source/Server.DarkSouls2/Server/GameService/GameManagers/Ghosts/DS2_GhostManager.h
++++ b/Source/Server.DarkSouls2/Server/GameService/GameManagers/Ghosts/DS2_GhostManager.h
+@@ -44,7 +44,7 @@ protected:
+ private:
+     Server* ServerInstance;
+ 
+-    OnlineAreaPool<uint64_t, Ghost> LiveCache;
++    OnlineAreaPool<DS2_CellAndAreaId, Ghost> LiveCache;
+ 
+     uint32_t NextMemoryCacheGhostId = std::numeric_limits<uint32_t>::max();
+ 
+diff --git a/Source/Server.DarkSouls2/Server/GameService/Utils/Ids/OnlineAreaId.inc b/Source/Server.DarkSouls2/Server/GameService/Utils/Ids/OnlineAreaId.inc
+index ac550a21..c28ccc56 100644
+--- a/Source/Server.DarkSouls2/Server/GameService/Utils/Ids/OnlineAreaId.inc
++++ b/Source/Server.DarkSouls2/Server/GameService/Utils/Ids/OnlineAreaId.inc
+@@ -33,3 +33,8 @@ ENTRY(Dragon_Aerie, "Dragon Aerie", 0x009cb530)
+ ENTRY(Shulva_Sanctum_City, "Shulva, Sanctum City", 0x030047b0)
+ ENTRY(Brume_Tower, "Brume Tower", 0x03006ec0)
+ ENTRY(Frozen_Eleum_Loyce, "Frozen Eleum Loyce", 0x030095d0)
++
++// Additional SotFS 360 areas verified against NETWORK_AREA_PARAM and NGP archives.
++ENTRY(Sotfs360_Map_20100000, "SotFS 360 map 20100000", 20100000)
++ENTRY(Sotfs360_Map_20260000, "SotFS 360 map 20260000", 20260000)
++ENTRY(Sotfs360_Map_40030000, "SotFS 360 map 40030000", 40030000)

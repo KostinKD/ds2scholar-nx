@@ -1,0 +1,28 @@
+#version 450
+// ds2scholar-nx (ds2_7e3_r11g11b10): the 7e3 side as r11f_g11f_b10f in the *_r11 variants.
+#ifndef SRC_FMT
+#define SRC_FMT rgba16f
+#endif
+#ifndef DST_FMT
+#define DST_FMT rgba16f
+#endif
+// ds2-nx: me_resolve_exp_bias.comp with an RGBA8 destination (ds2_resolve_bias_rgba8). Dark Souls II resolves its
+// HDR scene (EDRAM format 12) into an 8888 texture with bias -2 for the water's refraction (10951000).
+// Xenos convert-resolve exponent bias applies to all four components, before
+// destination packing. One invocation owns one texel; source EDRAM is unchanged.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0, SRC_FMT) uniform readonly image2D source_image;
+layout(set = 0, binding = 1, rgba8) uniform writeonly image2D destination_image;
+layout(push_constant) uniform Resolve {
+    ivec2 source_offset;
+    ivec2 destination_offset;
+    uvec2 extent;
+    int exponent_bias;
+} resolve;
+void main() {
+    uvec2 pixel = gl_GlobalInvocationID.xy;
+    if (any(greaterThanEqual(pixel, resolve.extent))) return;
+    vec4 color = imageLoad(source_image, resolve.source_offset + ivec2(pixel));
+    imageStore(destination_image, resolve.destination_offset + ivec2(pixel),
+               color * exp2(float(resolve.exponent_bias)));
+}

@@ -1,0 +1,57 @@
+# Settings read at startup (ReXGlue cvars). The build copies this file next to the executable when there is none
+# there yet; edit the copy. Any cvar can also be given on the command line (--name=value) or as REX_<NAME>.
+
+# GPU: stage 3 draws with ReXGlue's emulated Xenos GPU. Without it the Vd* calls are ignored ("no GPU emulation
+# loaded (gpu_plugin not set)", first boot 2026-10-16, logs/boot1.log) and nothing is drawn.
+gpu_plugin = "xenos"
+
+log_level = "info"
+
+# Development defaults: launch muted and minimized, so test runs do not take over the desktop or the speakers
+# (tools/win/boot_test.ps1 sets both through the environment anyway). Set both to false to play.
+audio_mute = true
+window_start_minimized = true
+
+# Stage 3 diagnostic (app/src/ds2_swap_log.cpp): the count of presented frames (VdSwap) in the log every N seconds.
+ds2_swap_log_s = 5
+
+# Stage 3 diagnostic (app/src/ds2_shot.cpp): save the presented image at these seconds after start, comma separated,
+# to captures/shot_<s>s.ppm next to the executable (tools/ppm_to_png.py). Empty: off.
+ds2_shot_s = ""
+
+# Stage 3 diagnostic (app/src/ds2_input_script.cpp): a scripted pad for unattended test runs, "<second>:<button>,..."
+# (a b x y start back up down left right lb rb), each held ds2_input_hold_ms. Empty: off (no extra pad).
+ds2_input_script = ""
+ds2_input_hold_ms = 200
+
+# Render targets: ROV (rasterizer-ordered views, exact EDRAM emulation) instead of the default RTV approximation.
+# With RTV the sky over Majula renders black with a blocky edge (owner's play session 2026-10-16, ds2_014.log). Sweep
+# at the Majula bonfire (tools/win/majula_sweep.ps1, near-black share of the top 120 rows): baseline 52.0 %, rov 0.0 %
+# (sky, clouds and the far tower drawn); depth_float24_round, gpu_allow_invalid_fetch_constants, d3d12_readback_resolve
+# 52.0 % (no effect); depth_float24_convert_in_pixel_shader 92.9 % (the whole scene black). Cost: a one-time ~15 s
+# pipeline build on the first Majula load, then 60 VdSwap/s. D3D12 (PC) only; the Switch (Vulkan) is a separate case.
+render_target_path_d3d12 = "rov"
+
+# Hitches on content seen for the first time (owner's sessions 2026-10-16: 0.35-0.7 s on entering Heide's Tower and the
+# Forest of Fallen Giants and on lighting a bonfire). Cause, measured (sdk/src/graphics/d3d12/stall_stats.h): at the end of
+# every submission the GPU thread created the queued pipelines itself and waited for the creation threads, so async
+# compilation held the frame. With async_shader_compilation a draw with a pending pipeline is skipped anyway, so the
+# wait protects nothing. Forest load with a cold driver shader cache (d3d12_shader_salt per run, tools/win/stutter_ab.ps1):
+# wait 1247 / 1252 ms longest gap, worst second 1 swap, up to 216 ms/s waiting; no wait 246 / 235 ms (the load itself),
+# worst second 46, 0 ms waiting. Shots after the load: the scene complete. Side effect: something new may appear a few
+# frames late instead of stopping the game.
+d3d12_async_no_submission_wait = true
+
+# Stage 4 diagnostic (app/src/ds2_d3d_census.cpp): calls per second of the hooked Direct3D functions every N seconds,
+# and whether the draw-time shader load finds VS/PS pointers at device +0x3310 / +0x330C. 0: off.
+ds2_d3d_census_s = 0
+
+# Native renderer (sa2_renderer_native = true): sa2's sampler caches kept across frames left a stale texture after a
+# new game's prologue (white Things Betwixt sky); per-frame caches match the emulated GPU (docs/progress.md, entry 20).
+sa2_native_cache_textures_between_frames = false
+
+# Stage 5, frame rate (2026-10-17): sa2's expanded-grid depth views for depth-only 4x draws. Dark Souls II only draws
+# Direct3D's Clear through the 4x alias (its 800x800 shadow map, twice a frame); with the grid view the clear could not
+# be redirected into the shadow map and 500 tiles went back and forth each time. Off: EDRAM depth representation
+# switches -31 % in Things Betwixt, -38 % in Majula (PC), image unchanged (Majula mean difference 0.55/255).
+sa2_native_depth_samples_x = false

@@ -1,0 +1,33 @@
+# Online for players of a distributed build (docs/online-public-plan.md, stage D). tools/make_public_config.py puts
+# this block in place of the owner's LAN test block of app/ds2_switch.toml (everything from "# Online and P2P LAN
+# Co-op" on).
+#
+# Server: ds3os-x360 on the project VPS (docs/online-server.md). Messages, ratings, bloodstains, ghosts, summon signs
+# and matchmaking go through it.
+net_online_probe = true
+net_dns_address = "ds2scholar.download"
+# The server by name, so it can move without new configs; this address if the name does not resolve.
+net_dns_fallback_address = "185.99.98.178"
+net_title_server_count = 1
+ds2_socket_buffer_endian = true
+# Tells the server which build of the port this is, so it can turn away builds too old to play with this one.
+net_client_hello = true
+
+# Identity: the XUID comes from the Switch user account (a user selector when the console has several), the saves of
+# the default profile are copied to it once (the original folder stays); the gamertag is the Switch nickname with
+# Cyrillic transliterated, or Player-XXXX. To choose another name, uncomment and edit (letters, digits, space, _ - .;
+# up to 15 characters):
+net_profile_generate_xuid = true
+# net_profile_name = "MyName"
+
+# Other players' gamertags from the server (X360NameService).
+net_user_name_lookup = true
+net_name_service = true
+
+# Co-op and invasions: the game's P2P packets go through the server's relay (UDP 1002, docs/online-relay.md),
+# addressed by XUID, so players behind any router or mobile network reach each other without port forwarding.
+# Checked 2026-10-29: Switch<->PC summons both ways and invasions, one network, PC over a VPN, Switch on mobile data.
+net_p2p_lan = true
+net_p2p_title_identity = true
+net_p2p_session_addresses = true
+net_p2p_relay = true

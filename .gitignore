@@ -1,0 +1,46 @@
+# Nothing derived from the game is ever committed: its files, the code generated from default.xex, and the
+# binaries built from that code.
+
+# --- Game files ---------------------------------------------------------------
+assets/
+*.xex
+*.xexp
+*.iso
+*.bin
+*.big
+*.bun
+*.viv
+*.nfsp
+
+# --- Generated from the game --------------------------------------------------
+generated/
+app*/generated/
+app*/src/copias_literales/
+app*/src/nfsmw_nativo_resplandor_*_spirv.h
+app_*/
+# PGO counts of the recompiled game (tools/win/pgo_merge.ps1 from the sessions in out/nx/keep/profiles)
+pgo/
+
+# --- Build output -------------------------------------------------------------
+out/
+build/
+*.nro
+*.nacp
+*.elf
+*.o
+*.obj
+*.a
+*.log
+*.err
+shaders/wasm/out/
+
+# --- Tools --------------------------------------------------------------------
+__pycache__/
+*.pyc
+.vs/
+.vscode/
+
+# --- Local outputs -------------------------------------------------------------
+logs/
+# Navigation graphs extracted from game maps (tools/extract_navmesh.py)
+tools/nav/

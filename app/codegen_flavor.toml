@@ -1,0 +1,103 @@
+# optimised codegen: written by tools\codegen.ps1 -Flavor optimised from perf_overrides.toml.
+# Code generation options for speed: the "optimised codegen" flavour (tools\codegen.ps1 -Flavor optimised copies this
+# file to codegen_flavor.toml, which ds2_manifest.toml includes; -Flavor classic writes an empty one). Root keys: they
+# must stay outside any table. Build-time options: each set is an NRO of its own, A/B against the classic one.
+#
+# SotFS (2026-10-21, branch cpu-optimised): ds2-nx's final configuration (its app/perf_overrides.toml, git 767a1256,
+# entries 42-62 of docs/ds2-nx/progress.md explain each option), rebuilt for SotFS. The options without per-function
+# marks carry over as they are; the keep lists are SotFS's own (audits below), not DS2's addresses.
+# Console baseline (classic, no LTO, 2026-10-21 docs/progress.md entry 10): 22-43 fps, CPU 213-340 % of 400 %, GPU idle
+# ("gap") ~12 ms per frame waiting for the CPU.
+#
+# Step 1 (ds2-nx entry 42, from sa2-nx): cr0-cr7, ctr, xer and the lwarx reservation as C++ locals; skip_msr;
+# dform_disp_split; fctiwz/fcti/div inline; fewer host flush-mode switches. Known risk (as DS2): the guest setjmp
+# (0x82FED7E0) - after a longjmp the CR locals of the setjmp caller keep the values of the failing call.
+# Post-codegen steps (ds2-nx entries 51 and 62): no_volatile (tools/pch_no_volatile.py + tools/loop_barriers.py; the
+# XDK memcpy sub_829C7FF4 kept volatile and without barriers by tools/keep_volatile.py / NO_BARRIER, and native with
+# ds2_native_unaligned_memcpy) and direct_calls (tools/direct_calls.py). The keep lists below were audited with these
+# steps off (logs/rbw_nonvolatile1-3.log, nonarg_audit1.log, nonarg_audit_with1.log: HANDOVER 0).
+# ds2: post_codegen only: no_volatile, direct_calls
+cr_as_local = true
+ctr_as_local = true
+xer_as_local = true
+reserved_as_local = true
+skip_msr = true
+dform_disp_split = true
+fctiwz_inline = true
+fp_moves_modeless = true
+fp_compares_modeless = true
+fp_mode_lookahead = true
+fp_mode_lookahead_past_branch = false
+fcti_inline = true
+fp_copy_pairs = true
+div_inline = true
+# ds2-nx kept the return-address stores (owner's decision 2026-10-18).
+elide_lr_stores = false
+# ds2-nx entry 59: r14-r31, f14-f31, v14-v31/v64-v127 as C++ locals. Keep list: tools/read_before_write.py on SotFS code
+# generated with the option, noreturn seeds 8269B380 (assert failure; ds2-nx 8266B030, its callee
+# 8266AF90 -> 8269B2E0), 82FEC680 (longjmp), 82FEDC70 (_invoke_watson; ds2-nx 82FB8EC0), 82FF45D0
+# (_CxxThrowException; ds2-nx 82FBF820), each the only masked-signature match.
+non_volatile_as_local = true
+# Keep list (2026-10-21, 58 functions): logs/rbw_nonvolatile1.log minus the cr6 false alarms (CompareAnyMode writes cr6
+# through a reference) and setjmp sub_82FED7E0 - the same kinds as ds2-nx (fragments without a prologue, vector leaf
+# functions reading v64-v127 first, prologues reading a non-volatile on some path); e.g. ds2-nx 829982F0/82998680 ->
+# 829C84C0/829C8850.
+non_volatile_as_local_keep = [0x8236F0D0, 0x823D6B40, 0x823D6D80, 0x824ECB50, 0x825C55A8, 0x825C5E08, 0x8274E5B4,
+  0x827798F8, 0x82779A5C, 0x82779D38, 0x82785FDC, 0x827F3F1C, 0x829BF9F8, 0x829C84C0, 0x829C8850, 0x82B0FE08,
+  0x82B11CD8, 0x82B14238, 0x82B15D40, 0x82B170D8, 0x82B258F8, 0x82B2CAE0, 0x82B2E868, 0x82B4EC60, 0x82B53260,
+  0x82B5EA20, 0x82B5F0B8, 0x82B651F8, 0x82B67A00, 0x82B77BB0, 0x82B832B8, 0x82B8E250, 0x82B8F378, 0x82B91810,
+  0x82B926E0, 0x82B92D10, 0x82B9C560, 0x82B9CE30, 0x82BA0168, 0x82BD2A58, 0x82C33490, 0x82CCEDD8, 0x82DFC36C,
+  0x82F259C8, 0x82FA8860, 0x82FD06E8, 0x8303EEB0, 0x830E5D90, 0x830F1C68, 0x8317A258, 0x8317A890, 0x8317BD80,
+  0x8317C720, 0x833C3250, 0x833C3598, 0x833DE6A8, 0x833DEA50, 0x833DED10, 0x833DEF78, 0x833E00A0]
+# ds2-nx entry 60: r0, r2, r11, r12, f0 and v32-v63 as C++ locals too (non_argument_as_local). Keep list: tools/non_argument_audit.py
+# on SotFS code generated with the non_volatile keep list above (logs/nonarg_audit1.log, same noreturn seeds): every
+# function named in an ENTRY or RET line, and the callee a RET value comes from (394 functions; ds2-nx ~380). Plus the
+# C++ EH dispatch, which passes r12 through an indirect call the audit cannot see: 0x83005820 = _CallSettingFrame
+# (ds2-nx 0x82FD0A70, byte-identical) and 0x82FEBF34 (continuation jump; ds2-nx 0x82FB7184, the only masked match).
+non_argument_as_local = true
+non_argument_as_local_keep = [
+  0x83005820, 0x82FEBF34,
+  0x82240000, 0x824B3C38, 0x824B3C50, 0x824B4978, 0x824B4AB0, 0x8253E748, 0x8253E8A0, 0x825D9DA8, 0x82637A28,
+  0x82648458, 0x826486B8, 0x826AC360, 0x827E2F70, 0x827EEF70, 0x827FB550, 0x827FB8C8, 0x82802718, 0x82802748,
+  0x828063B8, 0x82806560, 0x8280EAE0, 0x82839CF8, 0x828424A0, 0x828427F0, 0x82842808, 0x82843960, 0x82843DF8,
+  0x82848F58, 0x828496E0, 0x82849770, 0x82853108, 0x8286AF40, 0x8286B948, 0x828C5FC0, 0x828E6180, 0x828E6818,
+  0x828E72F8, 0x828E7F68, 0x828E8578, 0x828E85D8, 0x828E89C0, 0x828EF680, 0x828EF9A0, 0x828EFD20, 0x828EFDF8,
+  0x828F0270, 0x828F0640, 0x828F0FA0, 0x828F1B48, 0x828F3E50, 0x828F5028, 0x829C3438, 0x829D2C50, 0x829D2C78,
+  0x829D2F44, 0x829D2F6C, 0x829D3808, 0x829D3828, 0x82AE5738, 0x82AFDBE8, 0x82B0EB80, 0x82B258F8, 0x82B54A58,
+  0x82B5C620, 0x82B5EA20, 0x82B5F0B8, 0x82B60B28, 0x82B61B78, 0x82B64270, 0x82B714E8, 0x82B74A38, 0x82B77BB0,
+  0x82B81F98, 0x82B840A8, 0x82B84458, 0x82B85758, 0x82B89B80, 0x82B8CDE8, 0x82B8DE88, 0x82B8E490, 0x82B8FFC0,
+  0x82B901F0, 0x82B904E0, 0x82B91220, 0x82B92250, 0x82B92BE8, 0x82B92D10, 0x82BA0168, 0x82BC5F70, 0x82BC6B98,
+  0x82BC7A68, 0x82BC7E98, 0x82BCC1C0, 0x82BCE1E0, 0x82C33490, 0x82C33978, 0x82C35140, 0x82C35590, 0x82C35900,
+  0x82C35D08, 0x82C53BDC, 0x82C53BF0, 0x82C67FE0, 0x82C6A0B8, 0x82DF6668, 0x82E21D18, 0x82E226B8, 0x82E23710,
+  0x82E2A5FC, 0x82E2B520, 0x82E3F3C8, 0x82E3F7E0, 0x82E44590, 0x82E5CC58, 0x82E5CDB4, 0x82E5CF30, 0x82E5DDCC,
+  0x82E5DDF4, 0x82E5DE1C, 0x82E5DE44, 0x82E5DE6C, 0x82E5E194, 0x82E5E41C, 0x82E5E444, 0x82E5E74C, 0x82E5E774,
+  0x82E5E79C, 0x82E5E7C4, 0x82E5E7EC, 0x82E5E9F0, 0x82E5EC94, 0x82E5ECBC, 0x82E5ECE4, 0x82E5EECC, 0x82E5EEF4,
+  0x82E5EF1C, 0x82E5F1CC, 0x82E5F1F4, 0x82E5F21C, 0x82E5F244, 0x82E5F26C, 0x82E5F294, 0x82E5F70C, 0x82E5F734,
+  0x82E5F75C, 0x82E5F784, 0x82E5F7AC, 0x82E5F7D4, 0x82E5FD34, 0x82E5FD5C, 0x82E5FE74, 0x82E5FE9C, 0x82E603DC,
+  0x82E6041C, 0x82E604D8, 0x82E60528, 0x82E60550, 0x82E60684, 0x82E609EC, 0x82E60A9C, 0x82E60F44, 0x82E60F84,
+  0x82E61058, 0x82E61098, 0x82E610C0, 0x82E61260, 0x82E617C4, 0x82E61948, 0x82E61978, 0x82E619AC, 0x82E61D28,
+  0x82E61D58, 0x82E61D8C, 0x82E61FCC, 0x82E61FF4, 0x82E62024, 0x82E62058, 0x82E62164, 0x82E621A4, 0x82E6225C,
+  0x82E6229C, 0x82E622C4, 0x82E62404, 0x82E628F8, 0x82E62CFC, 0x82E62E40, 0x82E62F6C, 0x82E6309C, 0x82E631C4,
+  0x82E632FC, 0x82E633E0, 0x82E634D4, 0x82E635A8, 0x82E63960, 0x82E6398C, 0x82E641A0, 0x82E641CC, 0x82E642D0,
+  0x82E643F0, 0x82E65BC4, 0x82E65BEC, 0x82E65C14, 0x82E65C3C, 0x82E65C64, 0x82E65C8C, 0x82E65CB4, 0x82E65CDC,
+  0x82E65D04, 0x82E65D2C, 0x82E65D54, 0x82E65D7C, 0x82E65DA4, 0x82E65DCC, 0x82E65DF4, 0x82E65E1C, 0x82E65E44,
+  0x82E65E6C, 0x82E65E94, 0x82E65F24, 0x82E65FB4, 0x82E660BC, 0x82E660E8, 0x82E661FC, 0x82E66228, 0x82E6641C,
+  0x82E6645C, 0x82E66504, 0x82E66544, 0x82E66600, 0x82E66650, 0x82E66678, 0x82E66738, 0x82E66788, 0x82E667B0,
+  0x82E66994, 0x82E669D4, 0x82E66A7C, 0x82E66ABC, 0x82E66B78, 0x82E66BC8, 0x82E66BF0, 0x82E66CB0, 0x82E66D00,
+  0x82E66D28, 0x82E66E6C, 0x82E66FAC, 0x82E671DC, 0x82E6731C, 0x82E67968, 0x82E67990, 0x82E67FAC, 0x82E68170,
+  0x82E68198, 0x82E682FC, 0x82E68324, 0x82E68458, 0x82E685F8, 0x82E68620, 0x82E6887C, 0x82EEF4D0, 0x82F7DCA0,
+  0x82F86428, 0x82FE7B4C, 0x82FE8118, 0x82FE823C, 0x82FE832C, 0x82FE84B0, 0x82FE884C, 0x82FE8A00, 0x82FE8C8C,
+  0x82FE9000, 0x82FE94B4, 0x82FE9BBC, 0x82FE9DBC, 0x82FE9F24, 0x82FEA068, 0x82FEA350, 0x82FEA504, 0x82FEA7A4,
+  0x82FEAB2C, 0x82FEACC4, 0x82FEADAC, 0x82FEB28C, 0x82FEB330, 0x82FEB56C, 0x82FEB594, 0x82FEB6C4, 0x82FEDCE8,
+  0x82FEDDA4, 0x82FEFC74, 0x82FEFC94, 0x82FF05A4, 0x82FF05C4, 0x82FF08AC, 0x82FF08CC, 0x82FF0B64, 0x82FF0B84,
+  0x82FF0ECC, 0x82FF0EEC, 0x82FF1274, 0x82FF1294, 0x82FF1434, 0x82FF1454, 0x82FF1D5C, 0x82FF1D7C, 0x82FF2190,
+  0x82FF21B0, 0x82FF2708, 0x82FF333C, 0x82FF335C, 0x82FF4438, 0x82FF4464, 0x82FF456C, 0x82FF458C, 0x82FF4948,
+  0x82FF4F94, 0x82FF4FB4, 0x82FF51A8, 0x82FF51C8, 0x82FF5424, 0x82FF5444, 0x82FF55C8, 0x82FF57E4, 0x82FF5804,
+  0x82FF5B94, 0x82FF5BB4, 0x82FF5EC4, 0x82FF61FC, 0x82FF621C, 0x82FF9B00, 0x82FF9B20, 0x82FFB534, 0x82FFB554,
+  0x82FFBE54, 0x82FFBE74, 0x82FFC7D0, 0x82FFC7F0, 0x82FFCA18, 0x82FFCA38, 0x82FFF818, 0x82FFF8E0, 0x830001D0,
+  0x830001FC, 0x830008F4, 0x83000914, 0x830017A0, 0x830017C0, 0x83001D00, 0x83002DA4, 0x83002DC4, 0x83002FF8,
+  0x83003018, 0x830F20B0, 0x830FFBF8, 0x83102E68, 0x831032F0, 0x8310BE38, 0x83116488, 0x8312BB88, 0x8312C410,
+  0x8312FCC8, 0x83139E70, 0x83164DD8, 0x8317BD80, 0x8317C710, 0x8326CC60, 0x83273F18, 0x83274D90, 0x83299748,
+  0x8329B720, 0x8329BD88, 0x8329C240, 0x83348E54, 0x83348E74, 0x83348FBC, 0x83348FDC, 0x83349478, 0x83349498,
+  0x83349D74, 0x83349D94, 0x833B7888, 0x833BC8B0, 0x833BFD98, 0x833BFF28, 0x833C27D0, 0x833C28F0, 0x833C2A08,
+  0x833C2B78, 0x833C2CB8, 0x833C2E60, 0x833C3250, 0x833C3598, 0x833DD590, 0x833DDBE0]
