@@ -32,7 +32,8 @@ def package(root, nro, shader_dir, output, forwarder_dir=None):
     tool = _forwarder_tool()
     _,nacp = tool.read_nro_assets(nro.read_bytes())
     version = nacp[0x3060:0x3070].split(b'\0',1)[0].decode()
-    sources = {'README.md':root/'docs/players/README.md','LICENSE':root/'LICENSE',
+    guide_name = 'README.md' if forwarder_dir is not None else 'README-nro.md'
+    sources = {'README.md':root/'docs/players'/guide_name,'LICENSE':root/'LICENSE',
                'THIRD_PARTY_NOTICES.md':root/'THIRD_PARTY_NOTICES.md',
                'switch/ds2scholar-nx/ds2.nro':nro}
     for name in ('sa2_shaders.mesp','sa2_shaders.mesp.idx'):

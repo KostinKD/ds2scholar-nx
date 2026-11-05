@@ -32,6 +32,7 @@ class ReleaseBundleTests(unittest.TestCase):
         (self.root/'app/ds2_switch.toml').write_text('log_to_file = true\n# Online and P2P LAN Co-op\nnet_dns_address = "192.168.1.1"\nnet_profile_xuid = "private"\n')
         (self.root/'app/online_public.toml').write_text('net_dns_address = "ds2scholar.download"\nnet_p2p_relay = true\n')
         (self.root/'docs/players/README.md').write_text('Install from HOME. Preserve ds2/.\n')
+        (self.root/'docs/players/README-nro.md').write_text('Launch ds2.nro from hbmenu with title override. Preserve ds2/.\n')
         for name in ('LICENSE','THIRD_PARTY_NOTICES.md','sdk/example/LICENSE.txt'):
             (self.root/name).write_text('license fixture\n')
         subprocess.run(['git','init','-q',str(self.root)],check=True)
@@ -102,9 +103,14 @@ class ReleaseBundleTests(unittest.TestCase):
         archive = self.tool.package(self.root,self.nro,self.shaders,self.output)
         with zipfile.ZipFile(archive) as packed:
             self.assertFalse(any(name.endswith('.nsp') for name in packed.namelist()))
+            guide = packed.read('README.md').decode()
+            self.assertIn('hbmenu',guide)
+            self.assertIn('title override',guide)
+            self.assertNotIn('Install from HOME',guide)
 
     def test_player_zip_document_links_do_not_point_outside_the_package(self):
         (self.root/'docs/players/README.md').write_text('See [PGO](../pgo-profile.md) and [rebuild](../rebuild.md).\n')
+        (self.root/'docs/players/README-nro.md').write_text('See [PGO](../pgo-profile.md) and [rebuild](../rebuild.md).\n')
         (self.root/'THIRD_PARTY_NOTICES.md').write_text('[SDK license](sdk/example/LICENSE.txt)\n[Workflow](docs/workflow.md)\n')
         archive = self.tool.package(self.root,self.nro,self.shaders,self.output)
         with zipfile.ZipFile(archive) as packed:
